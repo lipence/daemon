@@ -12,7 +12,7 @@ type Applet interface {
 	OnQuit(ctx CtxAppletOnQuit)
 	Serve() (err error)
 	Serving() bool
-	Shutdown(ctx context.Context, done func()) (err error)
+	Shutdown(ctx context.Context) (err error)
 }
 
 type CtxAppletOnQuit interface {

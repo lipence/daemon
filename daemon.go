@@ -196,7 +196,7 @@ func (d *Daemon) shutdownApplet(t appletWithContext, _ int) (err error) {
 			return nil
 		}
 		d.logger.Warnf("shutting down %s", applet.Identity())
-		if err = applet.Shutdown(ctx, nil); err == nil {
+		if err = applet.Shutdown(ctx); err == nil {
 			d.logger.Warnf("applet `%s` quits with no error", applet.Identity())
 			return nil
 		} else {
