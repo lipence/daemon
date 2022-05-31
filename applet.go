@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"time"
 )
 
@@ -31,6 +32,9 @@ type appletServeWrapper struct {
 
 func (w *appletServeWrapper) serve() (err error) {
 	defer func() {
+		if _err := recover(); _err != nil {
+			err = fmt.Errorf("panic occurred: %v, trace:\n%s", anyAsErr(_err), string(debug.Stack()))
+		}
 		if err != nil {
 			w.lastErr = err
 		}

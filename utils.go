@@ -1,9 +1,12 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
+
+	"github.com/samber/lo"
 )
 
 type logger interface {
@@ -56,4 +59,29 @@ func defaultErrorBatch(errs []error) error {
 		return nil
 	}
 	return errorBatch(_errs)
+}
+
+func defaultValue[T comparable](src T, defaultVal T) T {
+	if src == lo.Empty[T]() {
+		return defaultVal
+	}
+	return src
+}
+
+const UnspecifiedErrText = "(unspecified)"
+
+func anyAsErr(src any) error {
+	if src == nil {
+		return nil
+	}
+	switch _src := src.(type) {
+	case error:
+		return _src
+	case fmt.Stringer:
+		return errors.New(defaultValue(_src.String(), UnspecifiedErrText))
+	case string:
+		return errors.New(defaultValue(_src, UnspecifiedErrText))
+	default:
+		return errors.New(defaultValue(fmt.Sprintf("(%T) %v", src, src), UnspecifiedErrText))
+	}
 }
