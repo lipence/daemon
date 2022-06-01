@@ -15,9 +15,11 @@ type Identity struct {
 	uuid uuid.UUID
 }
 
-func (i *Identity) String() string {
-	return i.name
-}
+func (i *Identity) String() string { return i.name }
+
+func (i *Identity) Name() string { return i.name }
+
+func (i *Identity) UUID() uuid.UUID { return i.uuid }
 
 type identityRegisterType struct {
 	lock   sync.RWMutex
