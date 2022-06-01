@@ -17,7 +17,6 @@ const (
 )
 
 var (
-	ErrDaemonNotRunning         = fmt.Errorf("daemon not running")
 	ErrDaemonIsInitialized      = fmt.Errorf("daemon is initialized")
 	ErrDaemonNotInitialized     = fmt.Errorf("daemon not initialized")
 	ErrDaemonRegisterIsFrozen   = fmt.Errorf("daemon register is frozen")
@@ -97,26 +96,26 @@ func (d *Daemon) Init() error {
 	}))
 }
 
-type appletWithSigChan = lo.Tuple2[Applet, chan struct{}]
+type appletWithCancelContext = lo.Tuple3[Applet, context.Context, context.CancelFunc]
+type appletWithContext = lo.Tuple2[Applet, context.Context]
 
 func (d *Daemon) Serve() error {
 	if !d.initCalled.Load() {
 		return ErrDaemonNotInitialized
 	}
 	defer d.serveCtx.halt()
-	var failFast = make(chan struct{}, len(d.applets))
-	var appletWithFastFailSigArr = make([]appletWithSigChan, len(d.applets))
+	var failFastCtx, failFastFunc = context.WithCancel(context.Background())
+	defer failFastFunc()
+	var appletWithFastFailSigArr = make([]appletWithCancelContext, len(d.applets))
 	for i := 0; i < len(d.applets); i++ {
-		appletWithFastFailSigArr[i] = appletWithSigChan{d.applets[i], failFast}
+		appletWithFastFailSigArr[i] = appletWithCancelContext{d.applets[i], failFastCtx, failFastFunc}
 	}
 	return d.errorBatch(parallel.Map(appletWithFastFailSigArr, d.serveApplet))
 }
 
-type appletWithContext = lo.Tuple2[Applet, context.Context]
-
 func (d *Daemon) Shutdown(ctx context.Context) error {
 	if !d.serveCtx.running() {
-		return ErrDaemonNotRunning
+		return nil
 	}
 	d.serveCtx.setHalting()
 	var appletWithContextArr = make([]appletWithContext, len(d.applets))
@@ -126,11 +125,11 @@ func (d *Daemon) Shutdown(ctx context.Context) error {
 	return d.errorBatch(parallel.Map(appletWithContextArr, d.shutdownApplet))
 }
 
-func (d *Daemon) serveApplet(t appletWithSigChan, _ int) (err error) {
-	var applet, failFast = lo.Unpack2(t)
+func (d *Daemon) serveApplet(t appletWithCancelContext, _ int) (err error) {
+	var applet, failFastCtx, failFastFunc = lo.Unpack3(t)
 	defer func() {
 		if err != nil {
-			failFast <- struct{}{}
+			failFastFunc()
 			err = fmt.Errorf("[applet::%s] %w", applet.Identity(), err)
 		}
 	}()
@@ -143,13 +142,15 @@ retryLoop:
 		case i >= lo.Ternary(d.serveMaxRetry > 0, d.serveMaxRetry, DefaultAppletClosureMaxRetry):
 			// exceed max fail times
 			d.logger.Errorf("applet `%s` bootstrap failed with repeatedly retries.", appIdentity)
-			return lo.Ternary(appWrapper.lastErr != nil, appWrapper.lastErr, ErrAppletQuitsWithoutReason)
+			err = lo.Ternary(appWrapper.lastErr != nil, appWrapper.lastErr, ErrAppletQuitsWithoutReason)
+			return err
 		case i == 0:
 			// first startup
-			d.logger.Infof("starting `%s ( %s )`", appIdentity.name, appIdentity.uuid)
+			d.logger.Infof("starting `%s` ( %s )", appIdentity, appIdentity.UUID())
 		case appWrapper.fail:
 			// fail with err
-			return lo.Ternary(appWrapper.lastErr != nil, appWrapper.lastErr, ErrAppletQuitsWithoutReason)
+			err = lo.Ternary(appWrapper.lastErr != nil, appWrapper.lastErr, ErrAppletQuitsWithoutReason)
+			return err
 		case appWrapper.reStart:
 			// restart
 			time.Sleep(appRestartInterval)
@@ -162,7 +163,7 @@ retryLoop:
 			return nil
 		}
 		select {
-		case <-failFast:
+		case <-failFastCtx.Done():
 			return nil
 		case <-d.serveCtx.haltSig():
 			d.logger.Warnf("applet `%s` halt without closure", appIdentity)
