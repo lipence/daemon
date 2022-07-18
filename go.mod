@@ -3,9 +3,8 @@ module github.com/lipence/daemon
 go 1.18
 
 require (
-	github.com/google/uuid v1.3.0
-	github.com/samber/lo v1.21.0
-	go.uber.org/atomic v1.9.0
+	github.com/lipence/graph v0.0.3
+	github.com/tidwall/hashmap v1.6.1
 )
 
-require golang.org/x/exp v0.0.0-20220303212507-bbda1eaf7a17 // indirect
+require github.com/cespare/xxhash/v2 v2.1.2 // indirect

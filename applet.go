@@ -7,13 +7,19 @@ import (
 	"time"
 )
 
-type Applet interface {
-	Identity() *Identity
+type ID interface {
+	comparable
+	fmt.Stringer
+}
+
+type Applet[id ID] interface {
+	Identity() id
 	Initialize() (err error)
 	OnQuit(ctx CtxAppletOnQuit)
-	Serve() (err error)
+	Serve(func()) (err error)
 	Serving() bool
 	Shutdown(ctx context.Context) (err error)
+	Depends() []id
 }
 
 type CtxAppletOnQuit interface {
@@ -22,15 +28,16 @@ type CtxAppletOnQuit interface {
 	Fail(do bool, filter func(err error) error)
 }
 
-type appletServeWrapper struct {
-	applet  Applet
+type appletServeWrapper[id ID] struct {
+	applet  Applet[id]
+	startOk func()
 	lastErr error
 	reInit  bool
 	reStart bool
 	fail    bool
 }
 
-func (w *appletServeWrapper) serve() (err error) {
+func (w *appletServeWrapper[id]) serve() (err error) {
 	defer func() {
 		if _err := recover(); _err != nil {
 			err = fmt.Errorf("panic occurred: %v, trace:\n%s", anyAsErr(_err), string(debug.Stack()))
@@ -44,31 +51,25 @@ func (w *appletServeWrapper) serve() (err error) {
 			return err
 		}
 	}
-	if err = w.applet.Serve(); err != nil {
+	if err = w.applet.Serve(w.startOk); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (w *appletServeWrapper) LastError() error {
-	return w.lastErr
-}
+func (w *appletServeWrapper[id]) LastError() error { return w.lastErr }
 
-func (w *appletServeWrapper) ReInitialize(do bool) {
-	w.reInit = do
-}
+func (w *appletServeWrapper[id]) ReInitialize(do bool) { w.reInit = do }
 
-func (w *appletServeWrapper) ReStart(do bool) {
-	w.reStart = do
-}
+func (w *appletServeWrapper[id]) ReStart(do bool) { w.reStart = do }
 
-func (w *appletServeWrapper) Fail(do bool, filter func(err error) error) {
+func (w *appletServeWrapper[id]) Fail(do bool, filter func(err error) error) {
 	if w.fail = do; w.fail && filter != nil {
 		w.lastErr = filter(w.lastErr)
 	}
 }
 
-func (w *appletServeWrapper) Description(after time.Duration) string {
+func (w *appletServeWrapper[id]) Description(after time.Duration) string {
 	switch {
 	case w.fail:
 		return "fail and exit"

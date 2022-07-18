@@ -1,2 +1,43 @@
+/vendor
+/build/dist
+/build/docs/sheets
+/Dockerfile
+/docker-compose.yaml
+.testCover
+build/dist
 
+# Environment configuration
+.DS_Store
+.a-test
+.tern-project
+./go.work
+
+# IDE
+.vscode/
 .idea/
+
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+*.out
+*.exe
+
+# Folders
+logs
+_obj
+_test
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+*.log
+*.test
+*.prof

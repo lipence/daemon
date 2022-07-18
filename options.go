@@ -4,54 +4,42 @@ import (
 	"context"
 )
 
-type OptionPayload interface {
-	apply(*Daemon)
+type OptionPayload[id ID] interface {
+	apply(*Daemon[id])
 }
 
-func OptLogger(logger logger) OptionPayload {
-	return &optLogger{logger: logger}
+func OptLogger[id ID](logger logger) OptionPayload[id] {
+	return &optLogger[id]{logger: logger}
 }
 
-type optLogger struct {
+type optLogger[id ID] struct {
 	logger logger
 }
 
-func (o *optLogger) apply(d *Daemon) {
+func (o *optLogger[id]) apply(d *Daemon[id]) {
 	d.logger = o.logger
 }
 
-func OptContext(ctx context.Context) OptionPayload {
-	return &optContext{ctx: ctx}
+func OptContext[id ID](ctx context.Context) OptionPayload[id] {
+	return &optContext[id]{ctx: ctx}
 }
 
-type optContext struct {
+type optContext[id ID] struct {
 	ctx context.Context
 }
 
-func (o *optContext) apply(d *Daemon) {
-	d.serveCtx.ctx = o.ctx
+func (o *optContext[id]) apply(d *Daemon[id]) {
+	d.status.ctx = o.ctx
 }
 
-func OptMaxRetry(serve, closure int) OptionPayload {
-	return &optMaxRetry{serve: serve, closure: closure}
+func OptMaxRetry[id ID](serve, closure int) OptionPayload[id] {
+	return &optMaxRetry[id]{serve: serve, closure: closure}
 }
 
-type optMaxRetry struct {
+type optMaxRetry[id ID] struct {
 	serve, closure int
 }
 
-func (o *optMaxRetry) apply(d *Daemon) {
+func (o *optMaxRetry[id]) apply(d *Daemon[id]) {
 	d.serveMaxRetry, d.closureMaxRetry = o.serve, o.closure
-}
-
-func OptErrorBatchFunc(batchFunc errorBatchFunc) OptionPayload {
-	return &optErrorBatchFunc{batchFunc: batchFunc}
-}
-
-type optErrorBatchFunc struct {
-	batchFunc errorBatchFunc
-}
-
-func (o *optErrorBatchFunc) apply(d *Daemon) {
-	d.errorBatch = o.batchFunc
 }
