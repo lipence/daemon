@@ -201,7 +201,6 @@ startupLoop:
 		case <-escapeCtx.Done():
 			break startupLoop
 		case <-_appletStartCtx.Done():
-			d.logger.Infof("applet startup %s started", _applet.Identity())
 			continue
 		case <-time.After(time.Minute):
 			errs.append(fmt.Errorf("applet startup timeout: id = %s", _applet.Identity()))
@@ -241,14 +240,18 @@ func (d *Daemon[id]) serveApplet(applet Applet[id], escCtx daemonEscapingCtx, st
 	}()
 	var lifeCount int
 	var appIdentity = applet.Identity()
-	var appWrapper = &appletServeWrapper[id]{applet: applet, startOk: startOk}
+	var appWrapper = &appletServeWrapper[id]{applet: applet, startOk: func() {
+		startOk()
+		d.logger.Infof("applet %q started", applet.Identity())
+	}}
 	var appRestartInterval = ternary(d.restartInterval != 0, d.restartInterval, DefaultAppletRestartInterval)
+	var appRestartMaxRetry = ternary(d.serveMaxRetry > 0, d.serveMaxRetry, DefaultAppletClosureMaxRetry)
 retryLoop:
 	for lifeCount = 0; d.status.running(); lifeCount++ {
 		switch {
-		case lifeCount >= ternary(d.serveMaxRetry > 0, d.serveMaxRetry, DefaultAppletClosureMaxRetry):
+		case lifeCount >= appRestartMaxRetry:
 			// exceed max fail times
-			d.logger.Errorf("applet `%s` bootstrap failed with repeatedly retries.", appIdentity)
+			d.logger.Errorf("applet %q bootstrap failed after maximum(%d) retries.", appIdentity, appRestartMaxRetry)
 			err = ternary(appWrapper.lastErr != nil, appWrapper.lastErr, ErrAppletQuitsWithoutReason)
 			return err
 		case lifeCount > 0:
@@ -268,7 +271,7 @@ retryLoop:
 		case <-escCtx.Done():
 			return nil
 		case <-d.status.haltSig():
-			d.logger.Warnf("applet `%s` halt without closure", appIdentity)
+			d.logger.Warnf("applet %q halt without closure", appIdentity)
 			break retryLoop
 		case err = <-async(appWrapper.serve):
 			applet.OnQuit(appWrapper)
@@ -279,9 +282,9 @@ retryLoop:
 				actDesc = "daemon shutting down"
 			}
 			if err != nil {
-				d.logger.Warnf("applet `%s` quit with error (%s): %v", appIdentity, actDesc, err)
+				d.logger.Warnf("applet %q quit with error (%s): %v", appIdentity, actDesc, err)
 			} else {
-				d.logger.Warnf("applet `%s` quit no error (%s)", appIdentity, actDesc)
+				d.logger.Warnf("applet %q quit no error (%s)", appIdentity, actDesc)
 			}
 		}
 	}
@@ -299,10 +302,10 @@ func (d *Daemon[id]) shutdownApplet(applet Applet[id], ctx context.Context) (err
 		}
 		d.logger.Warnf("shutting down %s", applet.Identity())
 		if err = applet.Shutdown(ctx); err == nil {
-			d.logger.Warnf("applet `%s` quits with no error", applet.Identity())
+			d.logger.Warnf("applet %q quits with no error", applet.Identity())
 			return nil
 		} else {
-			d.logger.Warnf("applet `%s` shutdown fail: %v", applet.Identity(), err)
+			d.logger.Warnf("applet %q shutdown fail: %v", applet.Identity(), err)
 		}
 		time.Sleep(ternary(d.restartInterval != 0, d.restartInterval, DefaultAppletRestartInterval))
 	}
