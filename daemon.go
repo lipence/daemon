@@ -298,8 +298,7 @@ func (d *Daemon[id]) shutdownApplet(applet Applet[id], ctx context.Context) (err
 	for i := 0; true; i++ {
 		switch {
 		case i >= ternary(d.closureMaxRetry > 0, d.closureMaxRetry, DefaultAppletClosureMaxRetry):
-			d.logger.Errorf("applet %s shutdown failed with repeatedly retries.")
-			return nil
+			return errors.New("shutdown failed after repeatedly retries")
 		case !applet.Serving():
 			return nil
 		}
