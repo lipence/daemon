@@ -239,10 +239,13 @@ func (d *Daemon[id]) serveApplet(applet Applet[id], escCtx daemonEscapingCtx, st
 		}
 	}()
 	var lifeCount int
+	var appStarted = &atomicBool{}
 	var appIdentity = applet.Identity()
 	var appWrapper = &appletServeWrapper[id]{applet: applet, startOk: func() {
-		startOk()
-		d.logger.Infof("applet %q started", applet.Identity())
+		if appStarted.CAS(true) {
+			startOk()
+			d.logger.Infof("applet %q started", applet.Identity())
+		}
 	}}
 	var appRestartInterval = ternary(d.restartInterval != 0, d.restartInterval, DefaultAppletRestartInterval)
 	var appRestartMaxRetry = ternary(d.serveMaxRetry > 0, d.serveMaxRetry, DefaultAppletClosureMaxRetry)
@@ -284,7 +287,7 @@ retryLoop:
 			if err != nil {
 				d.logger.Warnf("applet %q quit with error (%s): %v", appIdentity, actDesc, err)
 			} else {
-				d.logger.Warnf("applet %q quit no error (%s)", appIdentity, actDesc)
+				d.logger.Warnf("applet %q quit without error (%s)", appIdentity, actDesc)
 			}
 		}
 	}
@@ -300,9 +303,8 @@ func (d *Daemon[id]) shutdownApplet(applet Applet[id], ctx context.Context) (err
 		case !applet.Serving():
 			return nil
 		}
-		d.logger.Warnf("shutting down %s", applet.Identity())
+		d.logger.Warnf("applet %q is going to shutdown", applet.Identity())
 		if err = applet.Shutdown(ctx); err == nil {
-			d.logger.Warnf("applet %q quits with no error", applet.Identity())
 			return nil
 		} else {
 			d.logger.Warnf("applet %q shutdown fail: %v", applet.Identity(), err)
