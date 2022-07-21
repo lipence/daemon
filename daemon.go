@@ -68,21 +68,6 @@ func (c *daemonStatusCtx) initialized() bool {
 	return c.didInit
 }
 
-type daemonEscapingCtx struct {
-	context.Context
-	cancel context.CancelFunc
-}
-
-func newDaemonEscapingCtx() daemonEscapingCtx {
-	var cc = daemonEscapingCtx{}
-	cc.Context, cc.cancel = context.WithCancel(context.Background())
-	return cc
-}
-
-func (c daemonEscapingCtx) escape() {
-	c.cancel()
-}
-
 type Daemon[id ID] struct {
 	serveMaxRetry   int
 	closureMaxRetry int
@@ -180,19 +165,20 @@ func (d *Daemon[id]) Serve() (err error) {
 	} else {
 		reverse(applets)
 	}
-	var escapeCtx = newDaemonEscapingCtx()
+	var escapeCtx = newCancelableContext()
 	defer escapeCtx.escape()
 
-	var errs errorCollection
 	var wg sync.WaitGroup
+	var errs errorCollection
+	var _appletStartOkCtx = make([]*cancelableContext, len(applets))
+	defer func() { cancelableContextBatches(_appletStartOkCtx).cancel() }()
 startupLoop:
 	for i := len(applets) - 1; i >= 0; i-- {
 		wg.Add(1)
 		var _applet = applets[i]
-		var _appletStartCtx, _appletStartOk = context.WithCancel(context.Background())
-		defer _appletStartOk()
+		_appletStartOkCtx[i] = newCancelableContext()
 		go func() {
-			if err = d.serveApplet(_applet, escapeCtx, _appletStartOk); err != nil {
+			if err = d.serveApplet(_applet, escapeCtx, _appletStartOkCtx[i]); err != nil {
 				errs.append(err)
 			}
 			wg.Done()
@@ -200,7 +186,7 @@ startupLoop:
 		select {
 		case <-escapeCtx.Done():
 			break startupLoop
-		case <-_appletStartCtx.Done():
+		case <-_appletStartOkCtx[i].Done():
 			continue
 		case <-time.After(time.Minute):
 			errs.append(fmt.Errorf("applet startup timeout: id = %s", _applet.Identity()))
@@ -231,7 +217,7 @@ func (d *Daemon[id]) Shutdown(ctx context.Context) (err error) {
 	return errs.batch()
 }
 
-func (d *Daemon[id]) serveApplet(applet Applet[id], escCtx daemonEscapingCtx, startOk func()) (err error) {
+func (d *Daemon[id]) serveApplet(applet Applet[id], escCtx, startOkCtx *cancelableContext) (err error) {
 	defer func() {
 		if err != nil {
 			escCtx.escape()
@@ -243,7 +229,7 @@ func (d *Daemon[id]) serveApplet(applet Applet[id], escCtx daemonEscapingCtx, st
 	var appIdentity = applet.Identity()
 	var appWrapper = &appletServeWrapper[id]{applet: applet, startOk: func() {
 		if appStarted.CAS(true) {
-			startOk()
+			startOkCtx.cancel()
 			d.logger.Infof("applet %q started", applet.Identity())
 		}
 	}}

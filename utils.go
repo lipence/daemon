@@ -1,6 +1,9 @@
 package daemon
 
-import "sync/atomic"
+import (
+	"context"
+	"sync/atomic"
+)
 
 func empty[T any]() T {
 	var t T
@@ -50,4 +53,27 @@ func (b *atomicBool) CAS(to bool) bool {
 		return atomic.CompareAndSwapUint32(&b.flag, 0, 1)
 	}
 	return atomic.CompareAndSwapUint32(&b.flag, 1, 0)
+}
+
+type cancelableContext struct {
+	context.Context
+	cancel context.CancelFunc
+}
+
+func newCancelableContext() *cancelableContext {
+	var cc = cancelableContext{}
+	cc.Context, cc.cancel = context.WithCancel(context.Background())
+	return &cc
+}
+
+func (c *cancelableContext) escape() { c.cancel() }
+
+type cancelableContextBatches []*cancelableContext
+
+func (c cancelableContextBatches) cancel() {
+	for i := 0; i < len(c); i++ {
+		if c[i] != nil {
+			c[i].cancel()
+		}
+	}
 }
