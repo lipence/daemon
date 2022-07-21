@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/lipence/graph"
-	"github.com/tidwall/hashmap"
 )
 
 const (
@@ -73,7 +72,7 @@ type Daemon[id ID] struct {
 	closureMaxRetry int
 	restartInterval time.Duration
 	logger          logger
-	applets         hashmap.Map[id, Applet[id]]
+	applets         map[id]Applet[id]
 	appGraph        graph.Graph[id]
 	status          daemonStatusCtx
 }
@@ -96,12 +95,15 @@ func (d *Daemon[id]) Register(applets ...Applet[id]) error {
 	if d.status.initialized() {
 		return ErrDaemonRegisterIsFrozen
 	}
+	if d.applets == nil {
+		d.applets = make(map[id]Applet[id], len(applets))
+	}
 	for _, applet := range applets {
 		var identity = applet.Identity()
-		if _, exist := d.applets.Get(identity); exist {
+		if _, exist := d.applets[identity]; exist {
 			return fmt.Errorf("%w, applet = %v", ErrAppletIdentityConflict, identity)
 		}
-		d.applets.Set(identity, applet)
+		d.applets[identity] = applet
 	}
 	return nil
 }
@@ -110,7 +112,7 @@ func (d *Daemon[id]) Init() error {
 	if !d.status.setInitialized() {
 		return ErrDaemonIsInitialized
 	}
-	var applets = d.applets.Values()
+	var applets = mapValues(d.applets)
 	// build dep graph
 	d.appGraph = graph.NewDirected[id]()
 	for _, applet := range applets {
@@ -137,6 +139,9 @@ func (d *Daemon[id]) Init() error {
 }
 
 func (d *Daemon[id]) sortDependency(target id) (appletsList []Applet[id], err error) {
+	if d.applets == nil {
+		return []Applet[id]{}, nil
+	}
 	var idList []id
 	if target == empty[id]() {
 		idList, err = graph.NewRuntime[id](d.appGraph).DAGSortAll()
@@ -148,7 +153,7 @@ func (d *Daemon[id]) sortDependency(target id) (appletsList []Applet[id], err er
 	}
 	appletsList = make([]Applet[id], len(idList))
 	for i, appId := range idList {
-		appletsList[i], _ = d.applets.Get(appId)
+		appletsList[i], _ = d.applets[appId]
 	}
 	return appletsList, err
 }

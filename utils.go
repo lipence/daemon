@@ -38,6 +38,18 @@ func reverse[S ~[]E, E any](s S) {
 	}
 }
 
+func mapValues[M ~map[K]V, K comparable, V any](m M) []V {
+	var i, mLen = 0, len(m)
+	var result = make([]V, mLen)
+	if mLen > 0 {
+		for _, v := range m {
+			result[i] = v
+			i++
+		}
+	}
+	return result
+}
+
 type atomicBool struct{ flag uint32 }
 
 func (b *atomicBool) Store(value bool) {
